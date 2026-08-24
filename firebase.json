@@ -1,0 +1,28 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "bizhisab-ai-971a9",
+          "appId": "1:528775619459:android:b42cea519a4800b66c0cb6",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "bizhisab-ai-971a9",
+          "configurations": {
+            "android": "1:528775619459:android:b42cea519a4800b66c0cb6",
+            "ios": "1:528775619459:ios:a6ea9b28e6540f776c0cb6",
+            "web": "1:528775619459:web:c0bf9236ea0f828d6c0cb6",
+            "windows": "1:528775619459:web:688cda47733da4b76c0cb6"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  }
+}

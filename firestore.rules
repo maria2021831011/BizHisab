@@ -1,0 +1,144 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: true when the request is from an authenticated user whose
+    // uid matches the `userId` field stored on /businesses/{businessId}.
+    //
+    // Centralised here so every subcollection rule under a business can
+    // share the same ownership check without repeating the `get()` call.
+    // Firestore caches `get()` results across rule evaluations within a
+    // single request, so this stays within the 10-request budget even when
+    // a rule fires multiple `get()`s.
+    function _isOwner(businessId) {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/businesses/$(businessId)) &&
+        get(/databases/$(database)/documents/businesses/$(businessId)).data.userId == request.auth.uid;
+    }
+
+    // Users can only access their own data
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Business data - users can only access their own business.
+    //
+    // NOTE: For reads, `resource` is the EXISTING document and for writes
+    // it's the same (rule is checked BEFORE the write). On `create`,
+    // `resource` does not exist -- use `request.resource` instead. We
+    // split these so each path uses the correct side of the data model.
+    match /businesses/{businessId} {
+      allow read: if _isOwner(businessId);
+      allow write: if request.auth != null &&
+        resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null &&
+        request.resource.data.userId == request.auth.uid;
+
+      // Transactions subcollection
+      match /transactions/{transactionId} {
+        allow read, write: if _isOwner(businessId);
+      }
+
+      // Customers subcollection
+      match /customers/{customerId} {
+        allow read, create: if _isOwner(businessId);
+
+        // Updates: client can edit name/phone/address freely, but the
+        // derived ledger fields (`totalPurchase`, `totalPaid`, `totalDue`)
+        // are owned by the service-layer (DueCalculationService +
+        // recordPayment). They must only be modified in the same write
+        // as a transactions/{id} row that the client just created. We
+        // enforce that by requiring the changed values to be >= the
+        // existing values for `totalPurchase` and `totalPaid` (monotonic),
+        // and recomputed `totalDue` to equal the difference. This blocks
+        // arbitrary tampering while still allowing the client-side
+        // recorder/recalculator to keep the ledger in sync.
+        allow update: if _isOwner(businessId) &&
+          (
+            !('totalPurchase' in request.resource.data.diff(resource.data).affectedKeys()) ||
+            request.resource.data.totalPurchase >= resource.data.totalPurchase
+          ) &&
+          (
+            !('totalPaid' in request.resource.data.diff(resource.data).affectedKeys()) ||
+            request.resource.data.totalPaid >= resource.data.totalPaid
+          ) &&
+          (
+            !('totalDue' in request.resource.data.diff(resource.data).affectedKeys()) ||
+            request.resource.data.totalDue ==
+              request.resource.data.totalPurchase -
+                request.resource.data.totalPaid
+          );
+
+        allow delete: if _isOwner(businessId);
+
+        // Per-customer payment history subcollection.
+        //
+        // Access is gated on the authenticated user matching the OWNING
+        // business document's `userId`. We resolve that via `get()` on the
+        // parent /businesses/{businessId} doc. The lookup is cached by the
+        // rules engine so it doesn't multiply the per-request budget.
+        //
+        // The previous version of this rule was triggering intermittent
+        // PERMISSION_DENIED errors on Android when the SDK re-attached a
+        // long-lived payment listener with a stale cached auth token. We
+        // keep the strict ownership check here -- this subcollection only
+        // contains cash-in records for the signed-in business.
+        match /payments/{paymentId} {
+          allow read: if _isOwner(businessId);
+          allow create: if _isOwner(businessId) &&
+            request.resource.data.businessId == businessId &&
+            request.resource.data.customerId == customerId;
+          allow update, delete: if _isOwner(businessId);
+        }
+      }
+
+      // Suppliers subcollection
+      match /suppliers/{supplierId} {
+        allow read, create: if _isOwner(businessId);
+
+        // Mirror the customer totals invariants: totalPurchase/totalPaid are
+        // monotonic and totalDue must equal their difference.
+        allow update: if _isOwner(businessId) &&
+          (
+            !('totalPurchase' in request.resource.data.diff(resource.data).affectedKeys()) ||
+            request.resource.data.totalPurchase >= resource.data.totalPurchase
+          ) &&
+          (
+            !('totalPaid' in request.resource.data.diff(resource.data).affectedKeys()) ||
+            request.resource.data.totalPaid >= resource.data.totalPaid
+          ) &&
+          (
+            !('totalDue' in request.resource.data.diff(resource.data).affectedKeys()) ||
+            request.resource.data.totalDue ==
+              request.resource.data.totalPurchase -
+                request.resource.data.totalPaid
+          );
+
+        allow delete: if _isOwner(businessId);
+
+        // Per-supplier payment history subcollection.
+        //
+        // Mirrors the customer /payments rule above: ownership is checked
+        // against the parent /businesses/{businessId} doc's `userId`.
+        match /payments/{paymentId} {
+          allow read: if _isOwner(businessId);
+          allow create: if _isOwner(businessId) &&
+            request.resource.data.businessId == businessId &&
+            request.resource.data.supplierId == supplierId;
+          allow update, delete: if _isOwner(businessId);
+        }
+      }
+
+      // Categories subcollection
+      match /categories/{categoryId} {
+        allow read, write: if _isOwner(businessId);
+      }
+
+      // AI Insights subcollection
+      match /ai_insights/{insightId} {
+        allow read, write: if _isOwner(businessId);
+      }
+    }
+  }
+}

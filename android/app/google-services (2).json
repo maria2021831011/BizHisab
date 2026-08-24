@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "528775619459",
+    "project_id": "bizhisab-ai-971a9",
+    "storage_bucket": "bizhisab-ai-971a9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:528775619459:android:400d629fbb0304426c0cb6",
+        "android_client_info": {
+          "package_name": "com.bizhisab.ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCqMK4ez9vN53WjOYnMdJDjZFc6jmSRqFQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

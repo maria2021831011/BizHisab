@@ -334,6 +334,41 @@ def _run_for_user(
 # ---- Routes -----------------------------------------------------------------
 
 
+def _method_not_allowed_response(path: str) -> HTTPException:
+    """Self-describing 405 for GET on POST-only AI endpoints.
+
+    Some monitors / link-prefetchers / browser address-bar pastes hit
+    these URLs with GET. FastAPI's default 405 carries no JSON body,
+    which makes Render's access log ambiguous. Returning a structured
+    AiError keeps the response shape consistent and the log greppable.
+    """
+    logger.warning(
+        "AI method-not-allowed on %s: only POST is supported", path
+    )
+    return HTTPException(
+        status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
+        detail=AiError(
+            code="method_not_allowed",
+            message=(
+                f"{path} only accepts POST with "
+                "`Authorization: Bearer <Firebase ID token>` and a JSON "
+                "body of `{businessId, requestType, ...}`."
+            ),
+        ).model_dump(),
+        headers={"Allow": "POST, OPTIONS"},
+    )
+
+
+@router.get(
+    "/chat",
+    response_model=None,
+    responses={405: {"model": AiError}},
+)
+def chat_get() -> None:
+    """Defensive GET handler — returns a self-describing 405."""
+    raise _method_not_allowed_response("/api/ai/chat")
+
+
 @router.post(
     "/chat",
     response_model=AiInsightResponse,
@@ -367,6 +402,16 @@ def chat(payload: AiRequest, uid: str = Depends(authenticate_uid)) -> AiInsightR
             ).model_dump(),
         )
     return _run_for_user(uid, payload, question=payload.question)
+
+
+@router.get(
+    "/insight",
+    response_model=None,
+    responses={405: {"model": AiError}},
+)
+def insight_get() -> None:
+    """Defensive GET handler — returns a self-describing 405."""
+    raise _method_not_allowed_response("/api/ai/insight")
 
 
 @router.post(
@@ -417,6 +462,22 @@ def auth_test(uid: str = Depends(authenticate_uid)) -> dict[str, Any]:
         "uid": uid,
         "endpoint": "/api/ai/auth-test",
     }
+
+
+@router.get("/diag-ownership")
+def diag_ownership(
+    businessId: str,
+    uid: str = Depends(authenticate_uid),
+) -> dict[str, Any]:
+    """Temporary diagnostic: report which ownership path matched.
+
+    Requires the same Firebase Bearer token as the real endpoints.
+    Returns a structured dict for the three paths; never raises.
+    """
+    report = firestore_service.diagnose_business_ownership(uid, businessId)
+    logger.info("AI /diag-ownership: uid=%s businessId=%s any_matched=%s",
+                uid, businessId, report.get("any_matched"))
+    return report
 
 
 @router.get("/health", include_in_schema=False)

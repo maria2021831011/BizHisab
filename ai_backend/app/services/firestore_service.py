@@ -31,6 +31,88 @@ def _business_ref(uid: str, business_id: str):
     )
 
 
+def diagnose_business_ownership(uid: str, business_id: str) -> dict[str, Any]:
+    """Return a structured report of the three ownership paths.
+
+    This is the diagnostic counterpart of `verify_business_ownership`.
+    It never raises — it always returns a dict describing which path
+    matched and what each path saw. Used by the temporary
+    `GET /api/ai/diag-ownership` endpoint to debug production 403s.
+
+    Safe to leave in place: it returns metadata only (no transaction or
+    customer data), and is gated by Firebase ID token auth.
+    """
+    report: dict[str, Any] = {
+        "uid": uid,
+        "businessId": business_id,
+        "path1_subdoc": {"matched": False},
+        "path2_global_doc": {"matched": False},
+        "path3_user_businessIds": {"matched": False},
+    }
+
+    # Path 1
+    try:
+        doc = _business_ref(uid, business_id).get()
+        if doc.exists:
+            data = doc.to_dict() or {}
+            report["path1_subdoc"] = {
+                "matched": True,
+                "fields": {
+                    k: data.get(k) for k in ("userId", "uid", "ownerUid", "businessId", "claimedAt")
+                    if k in data
+                },
+            }
+        else:
+            report["path1_subdoc"] = {"matched": False, "reason": "subdoc_missing"}
+    except Exception as exc:
+        report["path1_subdoc"] = {"matched": False, "error": f"{type(exc).__name__}: {exc}"}
+
+    # Path 2
+    try:
+        global_doc = (
+            firestore_client().collection("businesses").document(business_id).get()
+        )
+        if global_doc.exists:
+            data = global_doc.to_dict() or {}
+            present = [k for k in ("userId", "ownerUid", "uid") if k in data]
+            owner_match = next((k for k in ("userId", "ownerUid", "uid") if data.get(k) == uid), None)
+            report["path2_global_doc"] = {
+                "matched": owner_match is not None,
+                "matched_field": owner_match,
+                "present_fields": present,
+                "field_values": {k: data.get(k) for k in present},
+            }
+        else:
+            report["path2_global_doc"] = {"matched": False, "reason": "global_doc_missing"}
+    except Exception as exc:
+        report["path2_global_doc"] = {"matched": False, "error": f"{type(exc).__name__}: {exc}"}
+
+    # Path 3
+    try:
+        user_doc = firestore_client().collection("users").document(uid).get()
+        if user_doc.exists:
+            data = user_doc.to_dict() or {}
+            ids = data.get("businessIds")
+            report["path3_user_businessIds"] = {
+                "matched": isinstance(ids, list) and business_id in ids,
+                "businessIds": ids if isinstance(ids, list) else None,
+            }
+            report["user_doc_present"] = True
+            report["user_doc_businessId_field"] = data.get("businessId")
+        else:
+            report["path3_user_businessIds"] = {"matched": False, "reason": "user_doc_missing"}
+            report["user_doc_present"] = False
+    except Exception as exc:
+        report["path3_user_businessIds"] = {"matched": False, "error": f"{type(exc).__name__}: {exc}"}
+
+    report["any_matched"] = (
+        report["path1_subdoc"].get("matched", False)
+        or report["path2_global_doc"].get("matched", False)
+        or report["path3_user_businessIds"].get("matched", False)
+    )
+    return report
+
+
 def verify_business_ownership(uid: str, business_id: str) -> None:
     """Confirm that the business document exists for the given uid.
 

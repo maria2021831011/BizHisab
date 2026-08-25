@@ -44,10 +44,14 @@ class AppConstants {
 
   /// Base URL for the FastAPI AI backend.
   ///
-  /// We use `127.0.0.1` (not `localhost`) so the URL resolves the same
-  /// way on every Android device.
+  /// PRODUCTION: must be HTTPS. Replace the placeholder below with your
+  /// real production hostname (e.g. https://api.bizhisab.ai) before
+  /// running `flutter build appbundle --release`.
   ///
-  /// Real Android device:
+  /// Local development uses `http://127.0.0.1:8000`. To switch back for
+  /// dev builds, change this constant back to the localhost URL.
+  ///
+  /// Real Android device (dev):
   ///   1. Connect phone via USB with USB-debugging enabled.
   ///   2. Run `adb reverse tcp:8000 tcp:8000` so the device can reach
   ///      the dev machine's localhost through `127.0.0.1:8000`.
@@ -55,7 +59,7 @@ class AppConstants {
   ///
   /// Android emulator: use `http://10.0.2.2:8000` instead.
   /// iOS simulator / desktop: `http://127.0.0.1:8000` works directly.
-  static const String aiBaseUrl = 'http://127.0.0.1:8000';
+  static const String aiBaseUrl = 'https://api.example.com';
 
   /// AI request timeout. Generous because Groq can be slow during peaks.
   static const Duration aiRequestTimeout = Duration(seconds: 30);

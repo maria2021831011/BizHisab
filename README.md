@@ -3,6 +3,7 @@
 > AI-powered smart business finance and accounting assistant for small businesses in Bangladesh.
 
 BizHisab AI helps shop owners and entrepreneurs track daily income, expenses, customers, suppliers, and dues — then turns the numbers into clear reports and AI-driven insights. Built with Flutter for Android, iOS, and Web, backed by Firebase and a Python AI service.
+demo link : https://bizhisab-ai-971a9.web.app/
 
 ---
 
